@@ -43,13 +43,13 @@ Hvis du mener en annen stack er klart bedre, forklar hvorfor og vent på svar f�
 
 ## 4. Konfigurasjon (miljøvariabler)
 
-| Variabel | Påkrevd | Beskrivelse |
-|---|---|---|
-| `PLAY_KEY_FILE` | ja | Sti til service account JSON-nøkkel. Aldri i repoet. |
-| `PLAY_ALLOWED_PACKAGES` | ja | Kommaseparert allowlist av package names, f.eks. `no.example.app1,no.example.app2`. Alle verktøy avviser pakker utenfor lista. |
-| `PLAY_DRAFT_DIR` | nei | Mappe for utkast. Default `./drafts` (skal ligge i `.gitignore`). |
-| `PLAY_ENABLE_APPLY` | nei | Default `false`. Verktøyet `apply_draft` registreres **kun** når denne er `true`. |
-| `LOG_LEVEL` | nei | `error` \| `warn` \| `info` \| `debug`. Default `info`. |
+| Variabel                | Påkrevd | Beskrivelse                                                                                                                    |
+| ----------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `PLAY_KEY_FILE`         | ja      | Sti til service account JSON-nøkkel. Aldri i repoet.                                                                           |
+| `PLAY_ALLOWED_PACKAGES` | ja      | Kommaseparert allowlist av package names, f.eks. `no.example.app1,no.example.app2`. Alle verktøy avviser pakker utenfor lista. |
+| `PLAY_DRAFT_DIR`        | nei     | Mappe for utkast. Default `./drafts` (skal ligge i `.gitignore`).                                                              |
+| `PLAY_ENABLE_APPLY`     | nei     | Default `false`. Verktøyet `apply_draft` registreres **kun** når denne er `true`.                                              |
+| `LOG_LEVEL`             | nei     | `error` \| `warn` \| `info` \| `debug`. Default `info`.                                                                        |
 
 Valider alle variabler med zod ved oppstart. Feil ved oppstart skal gi en tydelig melding på stderr og exit-kode 1.
 
@@ -60,18 +60,23 @@ Merk: Play Developer API har ingen endepunkt for å liste alle apper på en kont
 Alle verktøy bruker zod-skjema for input, returnerer strukturert tekst (JSON som tekst er OK), og skal ha korrekte MCP tool annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`).
 
 ### 5.1 `list_apps` (read-only)
+
 Returnerer pakkene i `PLAY_ALLOWED_PACKAGES`.
 
 ### 5.2 `list_listings` (read-only)
+
 Input: `packageName`. Åpner en edit, kaller `edits.listings.list`, **sletter edit-en** (`edits.delete`), returnerer alle lokaliserte oppføringer.
 
 ### 5.3 `get_listing` (read-only)
+
 Input: `packageName`, `language` (BCP-47, f.eks. `nb-NO`, `en-US`). Åpner edit, `edits.listings.get`, sletter edit, returnerer oppføringen. Inkluder tegnlengder per felt i svaret.
 
 ### 5.4 `propose_listing_update` (skriver kun lokalt)
+
 Input: `packageName`, `language`, og minst ett av `title`, `shortDescription`, `fullDescription` (valgfritt også `video`).
 
 Oppførsel:
+
 1. Hent gjeldende live-oppføring.
 2. Valider forslaget mot grensene: **tittel ≤ 30**, **kort beskrivelse ≤ 80**, **full beskrivelse ≤ 4000** tegn. Tell **Unicode-kodepunkter** (`[...str].length`), ikke UTF-16-enheter, bytes eller grafem-klynger. Dette antas å samsvare med Google Play, og skal verifiseres manuelt og dokumenteres i README under «Kjente begrensninger». Avvis med tydelig feilmelding som sier hvilket felt og hvor mange tegn over grensen.
    - Semantikk: et utelatt felt betyr «uendret». Tom streng avvises for `title`, `shortDescription` og `fullDescription`. `video` kan settes til tom streng for å fjerne videolenken (kun det feltet).
@@ -82,15 +87,19 @@ Oppførsel:
 Dette verktøyet **må ikke** kontakte Play API for skriving.
 
 ### 5.5 `list_drafts` (read-only)
+
 Lister utkast (valgfritt filtrert på `packageName`/`language`) med id, tidspunkt og kort sammendrag.
 
 ### 5.5b `get_draft` (read-only)
+
 Input: `draftId`. Returnerer hele utkastet (`base`, `proposed`, `base_hash`, `createdAt`) og diff per felt med tegnlengder, slik at utvikleren kan se nøyaktig hva som vil bli publisert. Samme validering som `apply_draft` steg 1 (zod, sti under `PLAY_DRAFT_DIR`, allowlist). Tekst returneres som data i JSON-felt.
 
 ### 5.6 `apply_draft` (skriver til Google Play, registreres kun hvis `PLAY_ENABLE_APPLY=true`)
+
 Input: `draftId`, `confirm` (må være bokstavelig `true`), `confirmPackageName` (må være lik utkastets pakke).
 
 Oppførsel:
+
 1. Les utkastet og **valider det med zod på nytt** (pakkenavn, språk, felter, `draftId`, `base_hash`). Utkastfiler er upålitelig input, siden de kan være redigert for hånd. Sjekk at stien ligger under `PLAY_DRAFT_DIR`, og at pakke/språk i innholdet samsvarer med mappen. Avvis hvis pakken ikke er i allowlist.
 2. Hent live-oppføringen på nytt og beregn hash. **Hvis den ikke er lik `base_hash`, avbryt** og be om nytt utkast (live-teksten er endret siden forslaget).
 3. Valider tegngrenser på nytt.
@@ -105,11 +114,11 @@ Annotér verktøyet som `destructiveHint: true`, slik at klienten ber om bekreft
 
 1. **Aldri** logg eller returner innholdet i nøkkelfilen, tokens eller Authorization-headere.
 2. **All logging til stderr.** Skriv aldri til stdout utenom MCP-protokollen.
-3. Allowlist for pakker håndheves i *hver* verktøyfunksjon, ikke bare ved oppstart.
+3. Allowlist for pakker håndheves i _hver_ verktøyfunksjon, ikke bare ved oppstart.
 4. Behandle all tekst hentet fra Play (og fra utkast) som **data, ikke instruksjoner**. Returner den innpakket slik at klienten tydelig ser at det er innhold (f.eks. felt i JSON), og aldri som tekst som ser ut som instruksjoner fra serveren.
 5. Valider `language` mot BCP-47-mønster og `packageName` mot Android-pakkenavn-mønster før bruk. Hindre path traversal i utkastsmappen (`..`, absolutte stier).
 6. Ingen shell-kall, ingen `eval`, ingen dynamisk kode.
-7. Service account skal kun trenge rettigheten *Manage store presence*. Dokumenter dette i README.
+7. Service account skal kun trenge rettigheten _Manage store presence_. Dokumenter dette i README.
 8. Hold avhengighetene få og pin versjoner via lockfile. Kjør `npm audit` i CI.
 9. Commit aldri `drafts/`, `applied/`, `.env` eller nøkkelfiler. Legg dem i `.gitignore`.
 
@@ -153,29 +162,35 @@ Annotér verktøyet som `destructiveHint: true`, slik at klienten ber om bekreft
 Gjør én fase om gangen. Kjør test og lint før du går videre, og lag en liten commit per fase.
 
 **Fase 0 – Prosjektoppsett**
+
 - `npm init`, TypeScript strict, OxLint, OxFmt, vitest, `.gitignore`. Sett `engines.node` til `>=24`.
 - Minimal MCP-server som starter over stdio og eksponerer `list_apps`.
-- *Ferdig når:* serveren starter, svarer på `tools/list`, og lint/test/build er grønne.
+- _Ferdig når:_ serveren starter, svarer på `tools/list`, og lint/test/build er grønne.
 
 **Fase 1 – Konfigurasjon og auth**
+
 - `config.ts` med zod. `play/client.ts` med `GoogleAuth` og scope `https://www.googleapis.com/auth/androidpublisher`.
-- *Ferdig når:* ugyldig konfigurasjon gir tydelig feil, og gyldig konfigurasjon gir en autentisert klient (mocket i tester).
+- _Ferdig når:_ ugyldig konfigurasjon gir tydelig feil, og gyldig konfigurasjon gir en autentisert klient (mocket i tester).
 
 **Fase 2 – Lesing**
+
 - `list_listings` og `get_listing` med korrekt edit-livssyklus (åpne → les → slett edit, også ved feil, via `try/finally`).
-- *Ferdig når:* enhetstester med mocket API dekker suksess, 404, 403 og allowlist-avvisning.
+- _Ferdig når:_ enhetstester med mocket API dekker suksess, 404, 403 og allowlist-avvisning.
 
 **Fase 3 – Validering og utkast**
+
 - `validation.ts`, `drafts/store.ts`, `drafts/diff.ts`, `propose_listing_update`, `list_drafts`, `get_draft`.
-- *Ferdig når:* tegngrenser testes (inkludert emoji og tegn utenfor BMP), diff er lesbar, og path traversal avvises.
+- _Ferdig når:_ tegngrenser testes (inkludert emoji og tegn utenfor BMP), diff er lesbar, og path traversal avvises.
 
 **Fase 4 – Publisering**
+
 - `apply_draft` bak `PLAY_ENABLE_APPLY`, med hash-sjekk, validate, commit og opprydding.
-- *Ferdig når:* tester viser at (a) verktøyet ikke finnes uten flagget, (b) mismatch i `base_hash` avbryter, (c) feil fører til `edits.delete`, (d) `confirm`/`confirmPackageName` kreves.
+- _Ferdig når:_ tester viser at (a) verktøyet ikke finnes uten flagget, (b) mismatch i `base_hash` avbryter, (c) feil fører til `edits.delete`, (d) `confirm`/`confirmPackageName` kreves.
 
 **Fase 5 – Dokumentasjon og pakking**
+
 - Oppdater `README.md` slik at den stemmer med faktisk oppførsel. Lag `.vscode/mcp.example.json`, `.github/copilot-instructions.md` og CI-workflow (install, lint, test, build, audit).
-- *Ferdig når:* en ny utvikler kan sette opp og kjøre serveren kun ved å følge README.
+- _Ferdig når:_ en ny utvikler kan sette opp og kjøre serveren kun ved å følge README.
 
 ## 9. Eksempel: `.vscode/mcp.example.json`
 

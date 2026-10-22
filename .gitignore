@@ -147,3 +147,10 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# play-listings-mcp
+/drafts/
+/applied/
+*-key.json
+play-key*.json
+service-account*.json

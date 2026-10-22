@@ -8,7 +8,7 @@ Copilot (agent mode) → play-listings-mcp (local, stdio) → Google Play Develo
 
 The assistant never sees your service account key. It only sees the small set of tools this server exposes.
 
-> **Status:** under development. See [`docs/plan.md`](docs/plan.md) for the build plan and phases.
+> **Status:** implemented according to [`docs/plan.md`](docs/plan.md). Not yet verified against a real Play Console account; see Known limitations.
 
 ## Features
 
@@ -21,15 +21,15 @@ The assistant never sees your service account key. It only sees the small set of
 
 ## Tools
 
-| Tool | Type | Description |
-|---|---|---|
-| `list_apps` | read | Lists the apps in the allowlist |
-| `list_listings` | read | All localized listings for an app |
-| `get_listing` | read | One listing for an app and language |
-| `propose_listing_update` | local write | Validates and saves a draft, returns a diff |
-| `list_drafts` | read | Lists saved drafts |
-| `get_draft` | read | Shows one full draft with a diff per field |
-| `apply_draft` | **writes to Play** | Publishes a draft. Only available when `PLAY_ENABLE_APPLY=true` |
+| Tool                     | Type               | Description                                                     |
+| ------------------------ | ------------------ | --------------------------------------------------------------- |
+| `list_apps`              | read               | Lists the apps in the allowlist                                 |
+| `list_listings`          | read               | All localized listings for an app                               |
+| `get_listing`            | read               | One listing for an app and language                             |
+| `propose_listing_update` | local write        | Validates and saves a draft, returns a diff                     |
+| `list_drafts`            | read               | Lists saved drafts                                              |
+| `get_draft`              | read               | Shows one full draft with a diff per field                      |
+| `apply_draft`            | **writes to Play** | Publishes a draft. Only available when `PLAY_ENABLE_APPLY=true` |
 
 `apply_draft` validates the draft again (drafts on disk are untrusted input), checks that the live text has not changed since the draft was created, re-validates the character limits, and requires `confirm: true` and the correct package name. A draft can only be published once; afterwards it is moved to `applied/`.
 
@@ -64,13 +64,13 @@ npm run build
 
 The server is configured with environment variables:
 
-| Variable | Required | Description |
-|---|---|---|
-| `PLAY_KEY_FILE` | yes | Path to the service account JSON key |
-| `PLAY_ALLOWED_PACKAGES` | yes | Comma-separated list of package names, e.g. `com.example.app1,com.example.app2` |
-| `PLAY_DRAFT_DIR` | no | Directory for drafts. Default: `./drafts`. Published drafts are moved to `<PLAY_DRAFT_DIR>/applied/` |
-| `PLAY_ENABLE_APPLY` | no | Set to `true` to enable `apply_draft`. Default: `false` |
-| `LOG_LEVEL` | no | `error`, `warn`, `info` or `debug`. Default: `info` |
+| Variable                | Required | Description                                                                                          |
+| ----------------------- | -------- | ---------------------------------------------------------------------------------------------------- |
+| `PLAY_KEY_FILE`         | yes      | Path to the service account JSON key                                                                 |
+| `PLAY_ALLOWED_PACKAGES` | yes      | Comma-separated list of package names, e.g. `com.example.app1,com.example.app2`                      |
+| `PLAY_DRAFT_DIR`        | no       | Directory for drafts. Default: `./drafts`. Published drafts are moved to `<PLAY_DRAFT_DIR>/applied/` |
+| `PLAY_ENABLE_APPLY`     | no       | Set to `true` to enable `apply_draft`. Default: `false`                                              |
+| `LOG_LEVEL`             | no       | `error`, `warn`, `info` or `debug`. Default: `info`                                                  |
 
 The Google Play API has no endpoint for listing all apps on an account, so `PLAY_ALLOWED_PACKAGES` also serves as the list of which apps exist.
 
@@ -123,7 +123,7 @@ The repository also contains `.github/copilot-instructions.md` with guidelines f
 
 ## Security model
 
-- **Least privilege:** the service account only needs *Manage store presence*.
+- **Least privilege:** the service account only needs _Manage store presence_.
 - **Allowlist:** every tool rejects packages that are not in `PLAY_ALLOWED_PACKAGES`.
 - **Writing is off by default**, and `apply_draft` requires `confirm`, the correct package name, and that the live text is unchanged since the draft was created.
 - **Text is data:** content fetched from Play and from drafts must be treated as data, not instructions. Do not enable auto-approval of tool calls for `apply_draft`.
@@ -135,9 +135,10 @@ Found a security issue? Report it privately via GitHub Security Advisories rathe
 ## Development
 
 ```bash
-npm run dev        # run with reload
+npm run dev        # compile with watch
 npm run lint       # OxLint
-npm run format     # OxFmt
+npm run format     # OxFmt (use format:check to only verify)
+npm run typecheck  # tsc --noEmit
 npm test           # vitest (no tests talk to the real Google API)
 npm run build      # compile to dist/
 ```
@@ -146,6 +147,7 @@ Project structure and phases are described in [`docs/plan.md`](docs/plan.md).
 
 ## Known limitations
 
+- Not yet tested against the real Google Play API (all tests use mocks). Verify with one app and `PLAY_ENABLE_APPLY=false` first.
 - Only store listing texts are supported. Screenshots, graphics, releases and tracks are out of scope.
 - Google may require changes to go through review before they become visible in the store.
 - Character limits are counted in Unicode code points. This is assumed to match Google Play and should be verified manually.

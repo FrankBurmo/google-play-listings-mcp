@@ -1,0 +1,21 @@
+{
+  "servers": {
+    "play-listings": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${workspaceFolder}/dist/index.js"],
+      "env": {
+        "PLAY_KEY_FILE": "${input:playKeyFile}",
+        "PLAY_ALLOWED_PACKAGES": "no.example.app1,no.example.app2",
+        "PLAY_ENABLE_APPLY": "false"
+      }
+    }
+  },
+  "inputs": [
+    {
+      "id": "playKeyFile",
+      "type": "promptString",
+      "description": "Sti til service account JSON-nøkkel"
+    }
+  ]
+}
