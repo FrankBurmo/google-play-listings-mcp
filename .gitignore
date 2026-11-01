@@ -154,3 +154,4 @@ vite.config.ts.timestamp-*
 *-key.json
 play-key*.json
 service-account*.json
+.vscode/mcp.json
