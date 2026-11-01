@@ -1,3 +1,4 @@
+import { writeFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { applyDraftHandler } from "../src/tools/applyDraft.js";
 import { getDraftHandler } from "../src/tools/getDraft.js";
@@ -118,6 +119,92 @@ describe("propose_listing_update, list_drafts, get_draft", () => {
     const res = await proposeHandler(ctx, { packageName: PKG, language: "nb-NO", title: "Gammel tittel" });
     expect(textOf(res)).toContain("identisk");
   });
+
+  it("creates an explicitly requested new-listing draft with all fields and no Play write", async () => {
+    const f = fakePublisher();
+    f.edits.listings.get.mockRejectedValueOnce(apiError(404));
+    const ctx = await makeContext(f.api);
+    const res = await proposeHandler(ctx, {
+      packageName: PKG,
+      language: "pt-BR",
+      createNew: true,
+      title: "Título",
+      shortDescription: "Curta",
+      fullDescription: "Descrição",
+    });
+    expect(res.isError).toBeUndefined();
+    const draftId = dataOf(res).draftId as string;
+    const draft = dataOf(await getDraftHandler(ctx, { draftId }));
+    expect(draft.base).toBeNull();
+    expect(draft.base_hash).toBeNull();
+    expect(draft.diff).toHaveLength(3);
+    expect(draft.diff[0]).toMatchObject({ before: "", after: "Título", changed: true });
+    expect(dataOf(await listDraftsHandler(ctx, { packageName: PKG })).drafts[0].changedFields).toEqual([
+      "title",
+      "shortDescription",
+      "fullDescription",
+    ]);
+    expect(f.calls).toEqual(["insert", "list", "delete"]);
+    expect(f.edits.listings.get).toHaveBeenCalledOnce();
+    expect(f.edits.listings.update).not.toHaveBeenCalled();
+    expect(f.edits.commit).not.toHaveBeenCalled();
+  });
+
+  it("requires all three text fields for a new listing before contacting Play", async () => {
+    const f = fakePublisher();
+    const ctx = await makeContext(f.api);
+    const res = await proposeHandler(ctx, { packageName: PKG, language: "pt-BR", createNew: true, title: "Título" });
+    expect(textOf(res)).toContain("shortDescription, fullDescription");
+    expect(f.calls).toEqual([]);
+  });
+
+  it("refuses creation if the listing already exists", async () => {
+    const f = fakePublisher();
+    const ctx = await makeContext(f.api);
+    const res = await proposeHandler(ctx, {
+      packageName: PKG,
+      language: "nb-NO",
+      createNew: true,
+      title: "Tittel",
+      shortDescription: "Kort",
+      fullDescription: "Lang",
+    });
+    expect(textOf(res)).toContain("finnes allerede");
+    expect((await ctx.store.list()).drafts).toHaveLength(0);
+  });
+
+  it.each([401, 403, 500])("does not treat a %i lookup error as an absent listing", async (status) => {
+    const f = fakePublisher();
+    f.edits.listings.get.mockRejectedValueOnce(apiError(status));
+    const ctx = await makeContext(f.api);
+    const res = await proposeHandler(ctx, {
+      packageName: PKG,
+      language: "pt-BR",
+      createNew: true,
+      title: "Título",
+      shortDescription: "Curta",
+      fullDescription: "Descrição",
+    });
+    expect(res.isError).toBe(true);
+    expect((await ctx.store.list()).drafts).toHaveLength(0);
+  });
+
+  it("does not treat a missing app or failed edit as an absent listing", async () => {
+    const f = fakePublisher();
+    f.edits.listings.list.mockRejectedValueOnce(apiError(404));
+    const ctx = await makeContext(f.api);
+    const res = await proposeHandler(ctx, {
+      packageName: PKG,
+      language: "pt-BR",
+      createNew: true,
+      title: "Título",
+      shortDescription: "Curta",
+      fullDescription: "Descrição",
+    });
+    expect(res.isError).toBe(true);
+    expect(f.edits.listings.get).not.toHaveBeenCalled();
+    expect((await ctx.store.list()).drafts).toHaveLength(0);
+  });
 });
 
 describe("apply_draft", () => {
@@ -134,6 +221,94 @@ describe("apply_draft", () => {
     f.calls.length = 0;
     return { f, ctx, draftId };
   }
+
+  async function setupNew() {
+    const f = fakePublisher();
+    f.edits.listings.get.mockRejectedValueOnce(apiError(404));
+    const ctx = await makeContext(f.api);
+    const proposed = await proposeHandler(ctx, {
+      packageName: PKG,
+      language: "pt-BR",
+      createNew: true,
+      title: "Título",
+      shortDescription: "Curta",
+      fullDescription: "Descrição",
+    });
+    const draftId = dataOf(proposed).draftId as string;
+    f.calls.length = 0;
+    return { f, ctx, draftId };
+  }
+
+  it("creates and archives a new listing after checking absence in the same edit", async () => {
+    const { f, ctx, draftId } = await setupNew();
+    f.edits.listings.get.mockRejectedValueOnce(apiError(404));
+    const res = await applyDraftHandler(ctx, { draftId, confirm: true, confirmPackageName: PKG });
+    expect(res.isError).toBeUndefined();
+    expect(f.calls).toEqual(["insert", "list", "update", "validate", "commit"]);
+    expect(f.edits.listings.get).toHaveBeenCalledTimes(2);
+    expect(f.edits.listings.update).toHaveBeenCalledWith({
+      packageName: PKG,
+      editId: "edit-1",
+      language: "pt-BR",
+      requestBody: { title: "Título", shortDescription: "Curta", fullDescription: "Descrição" },
+    });
+    expect(f.edits.listings.patch).not.toHaveBeenCalled();
+    expect(await ctx.store.isApplied(draftId)).toBe(true);
+  });
+
+  it("does not overwrite a listing created since the draft", async () => {
+    const { f, ctx, draftId } = await setupNew();
+    const res = await applyDraftHandler(ctx, { draftId, confirm: true, confirmPackageName: PKG });
+    expect(res.isError).toBe(true);
+    expect(textOf(res)).toContain("finnes allerede");
+    expect(f.calls).toEqual(["insert", "list", "get", "delete"]);
+    expect(f.edits.listings.update).not.toHaveBeenCalled();
+    expect((await ctx.store.list()).drafts).toHaveLength(1);
+  });
+
+  it("requires confirmation and a matching package before creating a listing", async () => {
+    const { f, ctx, draftId } = await setupNew();
+    const noConfirm = await applyDraftHandler(ctx, { draftId, confirm: false, confirmPackageName: PKG });
+    const wrongPackage = await applyDraftHandler(ctx, {
+      draftId,
+      confirm: true,
+      confirmPackageName: "no.example.app2",
+    });
+    expect(noConfirm.isError).toBe(true);
+    expect(wrongPackage.isError).toBe(true);
+    expect(f.calls).toEqual([]);
+  });
+
+  it("revalidates required fields in a new-listing draft before contacting Play", async () => {
+    const { f, ctx, draftId } = await setupNew();
+    const { draft, file } = await ctx.store.read(draftId);
+    await writeFile(file, JSON.stringify({ ...draft, proposed: { title: "Título" } }));
+    const res = await applyDraftHandler(ctx, { draftId, confirm: true, confirmPackageName: PKG });
+    expect(res.isError).toBe(true);
+    expect(textOf(res)).toContain("shortDescription, fullDescription");
+    expect(f.calls).toEqual([]);
+  });
+
+  it.each(["update", "validate", "commit"] as const)("cleans up a new-listing edit if %s fails", async (failing) => {
+    const { f, ctx, draftId } = await setupNew();
+    f.edits.listings.get.mockRejectedValueOnce(apiError(404));
+    if (failing === "update") f.edits.listings.update.mockRejectedValueOnce(apiError(400));
+    else f.edits[failing].mockRejectedValueOnce(apiError(400));
+    const res = await applyDraftHandler(ctx, { draftId, confirm: true, confirmPackageName: PKG });
+    expect(res.isError).toBe(true);
+    expect(f.calls.at(-1)).toBe("delete");
+    expect((await ctx.store.list()).drafts).toHaveLength(1);
+  });
+
+  it("does not publish a new listing when its lookup fails with a non-404 error", async () => {
+    const { f, ctx, draftId } = await setupNew();
+    f.edits.listings.get.mockRejectedValueOnce(apiError(403));
+    const res = await applyDraftHandler(ctx, { draftId, confirm: true, confirmPackageName: PKG });
+    expect(res.isError).toBe(true);
+    expect(textOf(res)).toContain("Manage store presence");
+    expect(f.edits.listings.update).not.toHaveBeenCalled();
+    expect(f.calls.at(-1)).toBe("delete");
+  });
 
   it("requires confirm=true", async () => {
     const { f, ctx, draftId } = await setup();

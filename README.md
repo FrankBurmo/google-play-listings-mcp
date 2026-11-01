@@ -14,6 +14,7 @@ The assistant never sees your service account key. It only sees the small set of
 
 - Fetch localized store listing texts (title, short description, full description) per app and language
 - Propose changes as **local drafts** with a diff and character counts
+- Propose a new localized listing as a draft without creating it on Google Play
 - Validation against Google Play's character limits: title 30, short description 80, full description 4000
 - Publishing to Google Play is **off by default** and requires explicit enabling plus per-draft confirmation
 - Allowlist of the apps the server is allowed to touch
@@ -32,6 +33,8 @@ The assistant never sees your service account key. It only sees the small set of
 | `apply_draft`            | **writes to Play** | Publishes a draft. Only available when `PLAY_ENABLE_APPLY=true` |
 
 `apply_draft` validates the draft again (drafts on disk are untrusted input), checks that the live text has not changed since the draft was created, re-validates the character limits, and requires `confirm: true` and the correct package name. A draft can only be published once; afterwards it is moved to `applied/`.
+
+To propose a new language, call `propose_listing_update` with `createNew: true`, the target `language`, and all three fields: `title`, `shortDescription`, and `fullDescription`. The server verifies that the listing does not already exist. The draft's `base` and `base_hash` are `null`, and its diff shows the new text against empty fields. Review it with `get_draft`; only an explicit request to publish authorizes `apply_draft`. Before creating it, the server checks again in the publishing edit that the listing is still absent. Existing listings continue to use the normal update workflow.
 
 ## Requirements
 
@@ -76,7 +79,7 @@ The Google Play API has no endpoint for listing all apps on an account, so `PLAY
 
 ### 4. Register in VS Code
 
-Copy `.vscode/mcp.example.json` to `.vscode/mcp.json` (or add it to your user settings) and adjust it:
+Copy `.vscode/mcp.example.json` to `.vscode/mcp.json` (or add it to your user settings) and adjust it. Copilot's MCP host does not support `${workspaceFolder}` or `${input:...}` substitutions, so use a relative entry point and set `PLAY_KEY_FILE` to the absolute path of your key:
 
 ```json
 {
@@ -84,21 +87,14 @@ Copy `.vscode/mcp.example.json` to `.vscode/mcp.json` (or add it to your user se
     "play-listings": {
       "type": "stdio",
       "command": "node",
-      "args": ["${workspaceFolder}/dist/index.js"],
+      "args": ["dist/index.js"],
       "env": {
-        "PLAY_KEY_FILE": "${input:playKeyFile}",
+        "PLAY_KEY_FILE": "C:\\Users\\<username>\\.secrets\\play-key.json",
         "PLAY_ALLOWED_PACKAGES": "com.example.app1,com.example.app2",
         "PLAY_ENABLE_APPLY": "false"
       }
     }
-  },
-  "inputs": [
-    {
-      "id": "playKeyFile",
-      "type": "promptString",
-      "description": "Path to the service account JSON key"
-    }
-  ]
+  }
 }
 ```
 
@@ -152,6 +148,7 @@ Project structure and phases are described in [`docs/plan.md`](docs/plan.md).
 - Google may require changes to go through review before they become visible in the store.
 - Character limits are counted in Unicode code points. This is assumed to match Google Play and should be verified manually.
 - The live-text check and the commit happen in separate edits, so there is a small window in which the live text could change in between.
+- New-listing creation uses Google's `edits.listings.update` after an absence check in the same edit. Behavior with concurrent edits and Play review requirements should be verified against a real Play Console account.
 - The server has no access to Play Console data (conversion rate, search terms, etc.). If you want data-driven optimization, you need to give the assistant the numbers yourself.
 - You are responsible for ensuring that published texts comply with [Google Play's metadata policy](https://support.google.com/googleplay/android-developer/answer/9898842).
 

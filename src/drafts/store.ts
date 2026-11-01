@@ -13,7 +13,7 @@ import {
   type ListingFields,
   type Proposal,
 } from "../validation.js";
-import { hashListing } from "./diff.js";
+import { buildDiff, hashListing } from "./diff.js";
 
 const MAX_TEXT = 10_000;
 
@@ -37,11 +37,11 @@ export const DraftSchema = z.object({
   draftId: z.string().regex(UUID_RE),
   packageName: z.string().regex(PACKAGE_RE),
   language: z.string().regex(LANGUAGE_RE),
-  base: BaseSchema,
-  base_hash: z.string().regex(/^[0-9a-f]{64}$/),
+  base: BaseSchema.nullable(),
+  base_hash: z.string().regex(/^[0-9a-f]{64}$/).nullable(),
   proposed: ProposalSchema,
   createdAt: z.iso.datetime(),
-});
+}).refine((draft) => (draft.base === null) === (draft.base_hash === null));
 
 export type Draft = z.infer<typeof DraftSchema>;
 
@@ -78,7 +78,7 @@ export class DraftStore {
   async create(input: {
     packageName: string;
     language: string;
-    base: ListingFields;
+    base: ListingFields | null;
     proposed: Proposal;
   }): Promise<{ draft: Draft; file: string }> {
     assertPackageName(input.packageName);
@@ -90,7 +90,7 @@ export class DraftStore {
       packageName: input.packageName,
       language: input.language,
       base: input.base,
-      base_hash: hashListing(input.base),
+      base_hash: input.base === null ? null : hashListing(input.base),
       proposed: input.proposed,
       createdAt,
     });
@@ -157,9 +157,7 @@ export class DraftStore {
         packageName: draft.packageName,
         language: draft.language,
         createdAt: draft.createdAt,
-        changedFields: Object.keys(draft.proposed).filter(
-          (k) => draft.proposed[k as keyof Proposal] !== draft.base[k as keyof ListingFields],
-        ),
+        changedFields: buildDiff(draft.base, draft.proposed).filter((d) => d.changed).map((d) => d.field),
       });
     }
     drafts.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -186,7 +184,7 @@ export class DraftStore {
     if (!draft || draft.draftId !== draftId || draft.packageName !== match.pkg || draft.language !== match.lang) {
       throw new UserError(`Utkastet ${draftId} er ugyldig eller ødelagt.`);
     }
-    if (hashListing(draft.base) !== draft.base_hash) {
+    if (draft.base !== null && hashListing(draft.base) !== draft.base_hash) {
       throw new UserError(`Utkastet ${draftId} er ugyldig: base_hash stemmer ikke med base.`);
     }
     return { draft, file: match.file };

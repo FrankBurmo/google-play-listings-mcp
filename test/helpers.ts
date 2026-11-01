@@ -58,6 +58,10 @@ export function fakePublisher(opts: FakeOptions = {}) {
         calls.push("patch");
         return { data: {} };
       }),
+      update: vi.fn(async () => {
+        calls.push("update");
+        return { data: {} };
+      }),
     },
   };
   return { api: { edits } as unknown as PublisherLike, edits, calls, listing };

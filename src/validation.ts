@@ -100,3 +100,11 @@ export function assertValidProposal(proposal: Proposal): void {
     throw new UserError(`Forslaget er ugyldig:\n- ${problems.join("\n- ")}`);
   }
 }
+
+export function assertValidNewListing(proposal: Proposal): void {
+  assertValidProposal(proposal);
+  const missing = TEXT_FIELDS.filter((field) => proposal[field] === undefined);
+  if (missing.length > 0) {
+    throw new UserError(`Ny oppføring krever alle tekstfeltene: ${missing.join(", ")} mangler.`);
+  }
+}

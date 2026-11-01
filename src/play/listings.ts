@@ -25,6 +25,12 @@ export interface PublisherLike {
         language: string;
         requestBody: Proposal;
       }): Promise<{ data: unknown }>;
+      update(p: {
+        packageName: string;
+        editId: string;
+        language: string;
+        requestBody: Proposal;
+      }): Promise<{ data: unknown }>;
     };
   };
 }
@@ -122,6 +128,63 @@ export async function getListing(
     });
   } catch (err) {
     throw toUserError(err, "Henting av oppføring");
+  }
+}
+
+async function getOptionalInEdit(
+  api: PublisherLike,
+  packageName: string,
+  editId: string,
+  language: string,
+): Promise<Listing | null> {
+  await api.edits.listings.list({ packageName, editId });
+  try {
+    const res = await api.edits.listings.get({ packageName, editId, language });
+    return normalize(res.data, language);
+  } catch (err) {
+    if (statusOf(err) === 404) return null;
+    throw err;
+  }
+}
+
+export async function getOptionalListing(
+  api: PublisherLike,
+  packageName: string,
+  language: string,
+  logger: Logger,
+): Promise<Listing | null> {
+  try {
+    return await withReadEdit(api, packageName, logger, (editId) =>
+      getOptionalInEdit(api, packageName, editId, language),
+    );
+  } catch (err) {
+    throw toUserError(err, "Henting av oppføring");
+  }
+}
+
+export async function createListing(
+  api: PublisherLike,
+  packageName: string,
+  language: string,
+  proposal: Proposal,
+  logger: Logger,
+): Promise<unknown> {
+  let editId: string | undefined;
+  try {
+    const inserted = await api.edits.insert({ packageName });
+    editId = inserted.data.id ?? undefined;
+    if (!editId) throw new Error("Play API returnerte ingen edit-id.");
+    const live = await getOptionalInEdit(api, packageName, editId, language);
+    if (live !== null) {
+      throw new UserError("Oppføringen finnes allerede. Ingenting er publisert. Lag et nytt utkast for endring.");
+    }
+    await api.edits.listings.update({ packageName, editId, language, requestBody: proposal });
+    await api.edits.validate({ packageName, editId });
+    const committed = await api.edits.commit({ packageName, editId });
+    return committed.data;
+  } catch (err) {
+    if (editId) await deleteEditQuietly(api, packageName, editId, logger);
+    throw toUserError(err, "Publisering");
   }
 }
 

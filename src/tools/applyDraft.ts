@@ -2,8 +2,8 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { hashListing } from "../drafts/diff.js";
-import { getListing, patchListing } from "../play/listings.js";
-import { assertValidProposal, UserError } from "../validation.js";
+import { createListing, getListing, patchListing } from "../play/listings.js";
+import { assertValidNewListing, assertValidProposal, UserError } from "../validation.js";
 import { assertAllowed, jsonResult, runTool, type ToolContext } from "./common.js";
 
 export const applyDraftShape = {
@@ -32,15 +32,20 @@ export async function applyDraftHandler(
     }
     inFlight.add(draft.draftId);
     try {
-      const live = await getListing(ctx.play(), draft.packageName, draft.language, ctx.logger);
-      if (hashListing(live) !== draft.base_hash) {
-        throw new UserError(
-          "Live-oppføringen er endret siden utkastet ble laget (base_hash stemmer ikke). Ingenting er publisert. Lag et nytt utkast.",
-        );
+      let response: unknown;
+      if (draft.base === null) {
+        assertValidNewListing(draft.proposed);
+        response = await createListing(ctx.play(), draft.packageName, draft.language, draft.proposed, ctx.logger);
+      } else {
+        const live = await getListing(ctx.play(), draft.packageName, draft.language, ctx.logger);
+        if (hashListing(live) !== draft.base_hash) {
+          throw new UserError(
+            "Live-oppføringen er endret siden utkastet ble laget (base_hash stemmer ikke). Ingenting er publisert. Lag et nytt utkast.",
+          );
+        }
+        assertValidProposal(draft.proposed);
+        response = await patchListing(ctx.play(), draft.packageName, draft.language, draft.proposed, ctx.logger);
       }
-      assertValidProposal(draft.proposed);
-
-      const response = await patchListing(ctx.play(), draft.packageName, draft.language, draft.proposed, ctx.logger);
       ctx.logger.info(`Utkast ${draft.draftId} publisert for ${draft.packageName} (${draft.language}).`);
 
       let archived: string | undefined;

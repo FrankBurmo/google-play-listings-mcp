@@ -75,6 +75,8 @@ Input: `packageName`, `language` (BCP-47, f.eks. `nb-NO`, `en-US`). Åpner edit,
 
 Input: `packageName`, `language`, og minst ett av `title`, `shortDescription`, `fullDescription` (valgfritt også `video`).
 
+For en ny lokalisert oppføring kan klienten i stedet sette `createNew: true` og må oppgi alle tre tekstfeltene. Serveren kontrollerer at oppføringen ikke allerede finnes, og lagrer `base: null` og `base_hash: null`. Utkastet gjennomgås og godkjennes på samme måte som andre utkast.
+
 Oppførsel:
 
 1. Hent gjeldende live-oppføring.
@@ -107,6 +109,8 @@ Oppførsel:
 5. Ved feil: forsøk `edits.delete`, og returner en forståelig feilmelding.
 6. Flytt utkastet atomisk (rename) til `PLAY_DRAFT_DIR/applied/` med tidsstempel og Play-ens svar, og logg handlingen (uten hemmeligheter). Et utkast kan bare publiseres én gang; er det allerede i `applied/`, avvises kallet. Hvis commit lyktes, men flytting feilet, skal feilmeldingen si tydelig at publiseringen er gjort.
 7. Dokumenter i README at hash-sjekken og commit skjer i separate edits, så det finnes et lite tidsvindu der live-teksten kan endres. Sjekk også tidlig om commit krever `changesNotSentForReview`, og dokumenter funnet.
+
+For utkast til en ny oppføring valideres alle tre tekstfeltene på nytt, og serveren kontrollerer i publiserings-edit-en at språket fortsatt ikke finnes. Deretter brukes `edits.listings.update` for å opprette oppføringen, fulgt av validate og commit. En eksisterende oppføring må aldri overskrives av et slikt utkast.
 
 Annotér verktøyet som `destructiveHint: true`, slik at klienten ber om bekreftelse. Anta aldri auto-godkjenning.
 
@@ -200,21 +204,14 @@ Gjør én fase om gangen. Kjør test og lint før du går videre, og lag en lite
     "play-listings": {
       "type": "stdio",
       "command": "node",
-      "args": ["${workspaceFolder}/dist/index.js"],
+      "args": ["dist/index.js"],
       "env": {
-        "PLAY_KEY_FILE": "${input:playKeyFile}",
+        "PLAY_KEY_FILE": "C:\\Users\\<username>\\.secrets\\play-key.json",
         "PLAY_ALLOWED_PACKAGES": "no.example.app1,no.example.app2",
         "PLAY_ENABLE_APPLY": "false"
       }
     }
-  },
-  "inputs": [
-    {
-      "id": "playKeyFile",
-      "type": "promptString",
-      "description": "Sti til service account JSON-nøkkel"
-    }
-  ]
+  }
 }
 ```
 

@@ -51,6 +51,21 @@ describe("DraftStore", () => {
     expect((await s.list()).invalid).toBe(1);
   });
 
+  it("rejects inconsistent new-listing base and hash values", async () => {
+    const s = await store();
+    const { draft, file } = await s.create({
+      packageName: PKG,
+      language: "pt-BR",
+      base: null,
+      proposed: { title: "A", shortDescription: "B", fullDescription: "C" },
+    });
+    const raw = JSON.parse(await readFile(file, "utf8"));
+    await writeFile(file, JSON.stringify({ ...raw, base_hash: hashListing(base) }));
+    await expect(s.read(draft.draftId)).rejects.toThrow(/ugyldig/);
+    await writeFile(file, JSON.stringify({ ...raw, base }));
+    await expect(s.read(draft.draftId)).rejects.toThrow(/ugyldig/);
+  });
+
   it("moves applied drafts to applied/ and refuses a second read", async () => {
     const s = await store();
     const { draft, file } = await s.create({ packageName: PKG, language: "nb-NO", base, proposed: { title: "Ny" } });

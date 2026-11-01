@@ -22,12 +22,12 @@ export interface FieldDiff {
   summary: string;
 }
 
-export function buildDiff(base: ListingFields, proposed: Proposal): FieldDiff[] {
+export function buildDiff(base: ListingFields | null, proposed: Proposal): FieldDiff[] {
   const diffs: FieldDiff[] = [];
   for (const field of FIELDS) {
     const after = proposed[field];
     if (after === undefined) continue;
-    const before = base[field];
+    const before = base?.[field] ?? "";
     const changed = before !== after;
     const beforeLength = countChars(before);
     const afterLength = countChars(after);

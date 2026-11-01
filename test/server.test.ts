@@ -44,6 +44,12 @@ describe("server tool registration", () => {
     expect(tools.find((t) => t.name === "propose_listing_update")?.annotations?.destructiveHint).toBe(false);
   });
 
+  it("exposes the explicit createNew option in the proposal schema", async () => {
+    const tools = (await (await connect(false)).listTools()).tools;
+    const propose = tools.find((t) => t.name === "propose_listing_update");
+    expect(propose?.inputSchema.properties?.createNew).toMatchObject({ type: "boolean" });
+  });
+
   it("rejects apply_draft input without literal confirm=true at the schema level", async () => {
     const client = await connect(true);
     const res = await client
